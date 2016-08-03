@@ -9,35 +9,37 @@ function make_tmp_filename() {
 if [ "$SSH_KEY_FILE" == "" ];then
 	SSH_KEY_FILE=~/.ssh/id_rsa
 fi
+myscp="scp -i $SSH_KEY_FILE"   #这里不是alias，也不是函数，比函数简单，和alias一样好使；非交互式shell不支持alias
+myssh="ssh -tt -i $SSH_KEY_FILE"
 
 function upload() {
 	local src_file=$1 dst_ip=$2 dst_file=$3
 	local basename=$(basename $src_file)
 	if [[ "$dst_ip" == "" ]];then
-		scp -i $SSH_KEY_FILE $src_file root@$IP_BAOLEIJI:$dst_file && echo "done" || echo "upload fail"
+		$myscp $src_file root@$IP_BAOLEIJI:$dst_file && echo "done" || echo "upload fail"
 		exit $?
 	fi
 
-	scp -i $SSH_KEY_FILE $src_file root@$IP_BAOLEIJI:/tmp/$basename
+	$myscp $src_file root@$IP_BAOLEIJI:/tmp/$basename
 	if [ $? != 0 ]; then
 		exit 1
 	fi
-	ssh -tt -i $SSH_KEY_FILE root@$IP_BAOLEIJI "scp /tmp/$basename  root@$dst_ip:$dst_file;rm -f /tmp/$basename" 2>/dev/null
+	$myssh root@$IP_BAOLEIJI "scp /tmp/$basename  root@$dst_ip:$dst_file;rm -f /tmp/$basename" 2>/dev/null
 	echo done
 }
 function download() {
 	local src_ip=$1 src_file=$2 dst_file=$3
 	local basename=$(basename $src_file)
 	if [[ "$src_ip" == "" ]]; then
-		scp -i $SSH_KEY_FILE root@$IP_BAOLEIJI:$src_file $dst_file  && echo "done" || echo "fail"
+		$myscp root@$IP_BAOLEIJI:$src_file $dst_file  && echo "done" || echo "fail"
 		exit $?
 	fi
-	ssh -tt -i $SSH_KEY_FILE root@$IP_BAOLEIJI "scp root@$src_ip:$src_file /tmp/$basename "
+	$myssh root@$IP_BAOLEIJI "scp root@$src_ip:$src_file /tmp/$basename "
 	if [ $? != 0 ]; then
 		exit 1
 	fi
-	scp -i $SSH_KEY_FILE root@$IP_BAOLEIJI:/tmp/$basename $dst_file
-	ssh -tt -i $SSH_KEY_FILE root@$IP_BAOLEIJI "rm /tmp/$basename " 2>/dev/null
+	$myscp root@$IP_BAOLEIJI:/tmp/$basename $dst_file
+	$myssh root@$IP_BAOLEIJI "rm /tmp/$basename " 2>/dev/null
 	echo done
 }
 function main(){
