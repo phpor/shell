@@ -3,6 +3,7 @@ CGROUP_DIR=/sys/fs/cgroup
 UNLIMITTED=9223372036854771712
 SC_CLK_TCK=$(getconf CLK_TCK)
 NANOSECONDSPERSECOND=1000000000
+COMMAND=comm
 
 function main() {
 	trap quit 2 3 15
@@ -14,9 +15,12 @@ function main() {
 		tput clear
 		get_cpu_info
 		get_mem_info
+		echo
+		get_process_info
 		unset char
 		read -s -N 1 -t 1 char
 		[[ $char == "q" ]] && break
+		[[ $char == "c" ]] && { [[ $COMMAND == comm ]] && COMMAND=cmdline || COMMAND=comm; }
 	done
 	quit
 }
@@ -94,5 +98,32 @@ function get_mem_info() {
 	swap_free=$((swap_total - swap_used))
 	printf "%12s%16s total, %20s used, %20s free\n" "Mem(MB):" $((mem_total/1024/1024)) $((mem_used/1024/1024)) $((mem_free/1024/1024))
 	printf "%12s%16s total, %20s used, %20s free\n"  "Swap(MB):" $((swap_total/1024/1024)) $((swap_used/1024/1024)) $((swap_free/1024/1024))
+}
+
+function get_process_info() {
+	local pids=$(get_process_pids)
+	printf "%8s%8s%8s%8s %s\n" PID PPID TGID "RSS(KB)" COMMAND
+	local count=0
+	for pid in $pids; do
+		[[ ! -e /proc/$pid ]] && continue
+		while read k v _;do
+			case $k in
+				"PPid:") ppid=$v;;
+				"Tgid:") tgid=$v;;
+				"VmRSS:") rss=$v;;
+			esac
+		done</proc/$pid/status
+		cmd=$(</proc/$pid/$COMMAND)
+		printf "%8s%8s%8s%8s %s\n" $pid $ppid $tgid $rss $cmd
+		((count++))
+	done
+	printf "\nProcess(%s)\n" $count
+}
+
+
+function get_process_pids() {
+	for d in /proc/*;do
+		[[ $d =~ /proc/[0-9]+ ]] && echo ${d#/proc/}
+	done
 }
 main
