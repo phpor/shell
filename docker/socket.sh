@@ -1,66 +1,88 @@
 #!/bin/bash
 VOLUME_DIR=/data1/docker_volume
-
+MAINSOCKET=/var/run/docker-socket.sock
 
 function main() {
-	export server
+	exec &>/dev/null
+	exec </dev/null
+	trap quit SIGINT SIGTERM
+
+	local self=$(cd $(dirname $0) && pwd)/$(basename $0)
+	local mainsocket=$MAINSOCKET
+
 	while :; do
-		docker ps | awk 'NR>1{print $NF}'|while read name; do
-			unixsock=$VOLUME_DIR/$name/config/.control.sock
-			is_sock_ok $unixsock && continue
-			export name unixsock
-			(coproc handler {
-				 server
-			 }
-			 nc -k -U $unixsock -l <&${handler[0]} >&${handler[1]} 2>/dev/null
-			)&
+		docker ps -a | awk 'NR>1{print $NF}'|while read name; do
+			local status=$(docker inspect --format '{{.State.Status}}' $name)
+			local unixsock=$VOLUME_DIR/$name/config/.control.sock
+			if [[ $status == "running" ]];then
+				is_sock_ok $unixsock && continue
+				nc -k -U $unixsock -l -c "bash $self handler $name" 2>/dev/null &
+			else
+				[[ -e $unixsock ]] && {
+					fuser -k $unixsock &>/dev/null
+					rm -fr $unixsock
+				}
+			fi
 		done
-		sleep 30
+		[[ -e $mainsocket ]] && { fuser -k $mainsocket &>/dev/null; rm -fr $mainsocket ;}
+		read -t 120 cmd < <(nc -l -U $mainsocket )
 	done
 }
 
 function is_sock_ok() {
 	unixsock=$1
-	[[ -e $unixsock ]] && [[ $(nc -U $unixsock -i 2 <<<ping 2>/dev/null) == "^_^" ]] && return 0
-	[[ -e $unixsock ]] && rm -fr $unixsock
-	return 1
+	[[ -e $unixsock ]] && nc -U $unixsock <<<check 2>/dev/null && return 0
 }
 
 function server() {
+	trap '' SIGPIPE
+	local name=$1
 	local cmd
 	while :; do
-		local status=$(docker inspect --format '{{.State.Status}}' $name)
-		[[ $status == "exited" ]] && {
-			[[ -e $unixsock ]] && unlink $unixsock
-			break
-		}
-		cmd=
-		local start=$(date +"%s")
-		if ! read -s -t 30 cmd; then
-			local end=$(date +"%s")
-			[[ -z $cmd ]] && [[ $(( end - start )) -lt 3 ]] && break   # Maybe nc has gone away
-			continue
-		fi
+		read cmd || exit 0
 		case $cmd in
 			'start')
-				docker start $name
+				docker-vm start $name
 				echo succ
 			;;
 			'poweroff')
 				echo succ
-				docker stop $name &
+				docker-vm stop $name &>/dev/null &
 			;;
 			'reboot')
 				echo succ
-				(docker stop $name
-				docker start $name )&
+				(docker-vm stop $name
+				docker-vm start $name ) &>/dev/null &
 			;;
 			'ping')
 				echo "^_^"
+			;;
+			'check')
+				:
+			;;
+			'quit'|'q')
+				echo "Bye"
+				exit 0
+			;;
+			*)
+				echo "Unknown cmd"
 			;;
 		esac
 
 	done
 }
 
-main
+function quit() {
+	find $VOLUME_DIR/*/config/.control.sock 2>/dev/null | while read unixsock;do
+		fuser -k $unixsock &>/dev/null
+		rm -fr $unixsock
+	done
+	fuser -k $MAINSOCKET
+	exit
+}
+
+[[ $1 == 'handler' ]] && {
+	server $2
+	exit
+}
+main $*
