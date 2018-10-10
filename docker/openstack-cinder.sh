@@ -30,7 +30,7 @@ function pidof() {
 	local pids=()
 	for f in /proc/*/comm; do
 		read comm <$f
-		[[ $comm == "$name" ]] && {
+		[[ $comm == "${name::15}" ]] && {
 			tmp=${f#/proc/};pids=( ${pids[@]} ${tmp%/comm})
 		}
 	done
