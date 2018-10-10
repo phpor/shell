@@ -1,4 +1,5 @@
 #!/bin/bash
+services=(cinder-api cinder-volume cinder-scheduler)
 
 function main() {
 	case $1 in
@@ -13,7 +14,27 @@ function main() {
 			echo cinder-volume
 			echo cinder-scheduler
 			;;
+		status)
+			[[ $2 != "" ]] && {
+				echo -n "$2: "; pidof $2;return
+			}
+			for s in "${services[@]}";do
+				echo -n "$s: "; pidof $s
+			done
+			;;
 	esac
+}
+
+function pidof() {
+	local name=$1
+	local pids=()
+	for f in /proc/*/comm; do
+		read comm <$f
+		[[ $comm == "$name" ]] && {
+			tmp=${f#/proc/};pids=( ${pids[@]} ${tmp%/comm})
+		}
+	done
+	echo ${pids[@]}
 }
 
 function start_service() {
