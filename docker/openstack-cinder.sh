@@ -5,9 +5,15 @@ function main() {
 	case $1 in
 		start)
 			[[ "$2" != "" ]] && { start_service $2; return; }
+			for s in "${services[@]}";do
+				start_service $s
+			done
 			;;
 		stop)
 			[[ "$2" != "" ]] && { stop_service $2; return; }
+			for s in "${services[@]}";do
+				stop_service $s
+			done
 			;;
 		list)
 			echo cinder-api
